@@ -41,6 +41,14 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       }
     },
+    commentId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'Comment',
+        key: 'id'
+      }
+    },
     status: {
       type: DataTypes.ENUM('pending', 'approved', 'rejected'),
       defaultValue: 'pending'
@@ -68,6 +76,10 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'groupPostId' 
     });
     
+    Report.belongsTo(models.Comment, { 
+      foreignKey: 'commentId' 
+    });
+
     Report.belongsTo(models.Polls, { 
       foreignKey: 'pollId' 
     });

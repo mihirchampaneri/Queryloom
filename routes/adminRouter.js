@@ -39,7 +39,7 @@ router.put('/users/role/:userId', async (req, res) => {
     user.role = role;
     await user.save();
 
-    res.status(200).json({message: `User role updated to ${role}`, user: { id: user.id, username: user.username,role: user.role}});
+    res.status(200).json({ message: `User role updated to ${role}`, user: { id: user.id, username: user.username, role: user.role } });
   } catch (err) {
     console.error('Role update error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -74,10 +74,19 @@ router.get('/reports', async (req, res) => {
       where: {
         status: 'pending'
       },
+      attributes: [
+        'id',
+        ['userId', 'ReportedBy'],
+        'message',
+        ['reportUserId', 'ReportedTo'],
+        'groupPostId',
+        'pollId',
+        'status'
+      ],
       include: [
         {
           model: User,
-          attributes: ['id', 'username', 'fullname', 'image'],
+          attributes: ['id', 'username'],
           required: false
         },
         {
@@ -216,6 +225,51 @@ router.post('/reports/users/:reportId', async (req, res) => {
 
   } catch (err) {
     console.error('Error processing report action:', err);
+    return res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.post('/reports/comments/:reportId', async (req, res) => {
+  const { reportId } = req.params;
+  const { action } = req.body;
+
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject".' });
+  }
+
+  try {
+    const report = await Report.findByPk(reportId);
+
+    if (!report || !report.commentId) {
+      return res.status(404).json({ message: 'Comment report not found.' });
+    }
+
+    const comment = await Comment.findByPk(report.commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found.' });
+    }
+
+    if (action === 'approve') {
+      await report.update({ status: 'approved' });
+      await comment.destroy();
+
+      return res.status(200).json({
+        message: 'Report approved. Comment has been deleted.',
+        pollId: report.pollId,
+        commentId: report.commentId
+      });
+
+    } else if (action === 'reject') {
+      await report.update({ status: 'rejected' });
+      return res.status(200).json({
+        message: 'Report rejected. Comment remains visible.',
+        pollId: report.pollId,
+        commentId: report.commentId
+      });
+    }
+
+  } catch (err) {
+    console.error('Error processing comment report:', err);
     return res.status(500).json({ message: 'Internal server error.' });
   }
 });
@@ -480,25 +534,25 @@ router.put('/groups/members/:memberId/role', async (req, res) => {
 router.get('/comments', async (req, res) => {
   try {
     const comments = await Comment.findAll({
-      attributes:['id','message','attachments','parentCommentId'],
+      attributes: ['id', 'message', 'attachments', 'parentCommentId'],
       include: [
         {
           model: User,
-          as:'user',
+          as: 'user',
           attributes: ['id', 'username']
         },
         {
           model: Polls,
-          as:'poll',
-          attributes: ['id', 'questionText','postType','visibility','commentPermission'],
+          as: 'poll',
+          attributes: ['id', 'questionText', 'postType', 'visibility', 'commentPermission','createdAt'],
           include: [
             {
               model: Option,
               as: 'options',
-              attributes:['name'],
+              attributes: ['name'],
               required: false,
             },
-            { model: Attachment, as: 'attachments',attributes:['attachmentType','attachment'], required: false }
+            { model: Attachment, as: 'attachments', attributes: ['attachmentType', 'attachment'], required: false }
           ],
         },
       ],
@@ -515,7 +569,7 @@ router.get('/comments', async (req, res) => {
 router.delete('/comments/:commentId', async (req, res) => {
 
   const { commentId } = req.params;
-  
+
   try {
     const comment = await Comment.findByPk(commentId);
     if (!comment) {
@@ -528,6 +582,25 @@ router.delete('/comments/:commentId', async (req, res) => {
   } catch (error) {
     console.error('Error deleting comment:', error);
     res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.get('/summary', async (req, res) => {
+  try {
+    const ActiveUsers = await User.count({ where: { verificationStatus: 'verified' } });
+    const Poll = await Polls.count({ where: { unpublish: false, visibility: 1 } });
+    const Groups = await Group.count();
+    const GroupPolls = await GroupPost.count({ where: { approved: true } });
+
+    return res.status(200).json({
+      Active_User: ActiveUsers,
+      Polls: Poll,
+      Groups: Groups,
+      Group_Polls: GroupPolls
+    });
+  } catch (error) {
+    console.error('Error fetching admin summary:', error);
+    return res.status(500).json({ message: 'Failed to fetch summary' });
   }
 });
 

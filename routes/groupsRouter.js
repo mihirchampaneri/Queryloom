@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { Sequelize, Op } = require('sequelize');
 const upload = require('../helpers/multer-config');
-const { Group, GroupMember, Report, GroupPost, Polls, Attachment, Option, User, Vote, Comment, Like, Saved, Rule, sequelize } = require('../models');
+const { Group, GroupMember, Report, GroupPost, Polls, Invite, Attachment, Option, User, Vote, Comment, Like, Saved, Rule, sequelize } = require('../models');
 
 // router.post('/create', upload.fields([{ name: 'groupProfilePic', maxCount: 1 }, { name: 'groupBackgroundImg', maxCount: 1 }]), async (req, res) => {
 //     const {
@@ -1615,6 +1615,54 @@ router.get('/:groupId/mypolls', async (req, res) => {
   } catch (err) {
     console.error('Error fetching user polls by group:', err);
     return res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.post('/invite', async (req, res) => {
+  const inviterId = req.user.id;
+  const { groupId, userId } = req.body;
+
+  if (!groupId || !userId) {
+    return res.status(400).json({ message: 'groupId and userId are required' });
+  }
+
+  try {
+
+    const groupMember = await GroupMember.findOne({
+      where: {
+        groupId,
+        userId: inviterId,
+        approved: true
+      }
+    });
+
+    if (!groupMember) {
+      return res.status(403).json({ message: 'You are not a member of this group' });
+    }
+
+    const existingInvite = await Invite.findOne({
+      where: {
+        groupId,
+        userId,
+        status: 'invited'
+      }
+    });
+
+    if (existingInvite) {
+      return res.status(409).json({ message: 'User already invited to this group' });
+    }
+
+    const invite = await Invite.create({
+      groupId,
+      memberId: groupMember.id,
+      userId,
+      status: 'invited'
+    });
+
+    res.status(201).json({ message: 'Invite sent successfully', invite });
+  } catch (err) {
+    console.error('Invite error:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 

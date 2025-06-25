@@ -2,58 +2,58 @@ const express = require('express');
 const router = express.Router();
 const upload = require('../helpers/multer-config');
 const { Op, Sequelize } = require('sequelize');
-const { UserFollows,Group, Report, User, Polls, Like, Comment, Attachment, Option, Vote } = require('../models');
+const { UserFollows, Group, GroupMember, Report, User, Polls, Like, Invite, Comment, Attachment, Option, Vote } = require('../models');
 const { signIn, signUpRequest, signUpVerify, logout } = require('../controllers/authController');
 
 
-router.post('/signin',signIn);
+router.post('/signin', signIn);
 
-router.post('/signup/request',upload.single("image"), signUpRequest);
+router.post('/signup/request', upload.single("image"), signUpRequest);
 
 router.post('/signup/verify', signUpVerify);
 
-router.post('/logout',logout);
+router.post('/logout', logout);
 
 router.post('/blocked', async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const { targetUserId } = req.body;
-  
-      if (!targetUserId || userId === parseInt(targetUserId)) {
-        return res.status(400).json({ message: "Invalid target user ID" });
-      }
+  try {
+    const userId = req.user.id;
+    const { targetUserId } = req.body;
 
-      const relation = await UserFollows.findOne({
-        where: {
-          [Op.or]: [
-            { followerId: userId, followingId: targetUserId },
-            { followerId: targetUserId, followingId: userId }
-          ]
-        }
-      });
-  
-      if (relation) {
-        relation.blocked = !relation.blocked;
-        await relation.save();
-  
-        const status = relation.blocked ? 'blocked' : 'unblocked';
-        return res.status(200).json({ message: `User ${status} successfully`, blocked: relation.blocked });
-      } else {
-        await UserFollows.create({
-          followerId: userId,
-          followingId: targetUserId,
-          blocked: true
-        });
-  
-        return res.status(201).json({ message: 'User blocked successfully', blocked: true });
-      }
-    } catch (err) {
-      console.error('Error toggling block status:', err);
-      return res.status(500).json({ message: 'Server error' });
+    if (!targetUserId || userId === parseInt(targetUserId)) {
+      return res.status(400).json({ message: "Invalid target user ID" });
     }
+
+    const relation = await UserFollows.findOne({
+      where: {
+        [Op.or]: [
+          { followerId: userId, followingId: targetUserId },
+          { followerId: targetUserId, followingId: userId }
+        ]
+      }
+    });
+
+    if (relation) {
+      relation.blocked = !relation.blocked;
+      await relation.save();
+
+      const status = relation.blocked ? 'blocked' : 'unblocked';
+      return res.status(200).json({ message: `User ${status} successfully`, blocked: relation.blocked });
+    } else {
+      await UserFollows.create({
+        followerId: userId,
+        followingId: targetUserId,
+        blocked: true
+      });
+
+      return res.status(201).json({ message: 'User blocked successfully', blocked: true });
+    }
+  } catch (err) {
+    console.error('Error toggling block status:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
-router.get('/blocked',  async (req, res) => {
+router.get('/blocked', async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -91,14 +91,14 @@ router.get('/followers', async (req, res) => {
     }
 
     const followers = await user.getFollowers({
-      attributes: ['id', 'username','fullname'],
+      attributes: ['id', 'username', 'fullname'],
       joinTableAttributes: ['blocked']
     });
 
     const formattedFollowers = followers.map(follower => ({
       id: follower.id,
       username: follower.username,
-      fullname:follower.fullname,
+      fullname: follower.fullname,
       blocked: follower.UserFollows.blocked
     }));
 
@@ -117,13 +117,13 @@ router.get('/followings', async (req, res) => {
     }
 
     const followings = await user.getFollowings({
-      attributes: ['id', 'username','fullname'],
+      attributes: ['id', 'username', 'fullname'],
       joinTableAttributes: ['blocked']
     });
 
     const formattedFollowings = followings.map(following => ({
       id: following.id,
-      fullname:following.fullname,
+      fullname: following.fullname,
       username: following.username,
       blocked: following.UserFollows.blocked
     }));
@@ -222,7 +222,7 @@ router.get('/profile', async (req, res) => {
             {
               model: Vote,
               as: 'votes',
-              attributes: ['id'] 
+              attributes: ['id']
             }
           ],
           required: false
@@ -247,15 +247,15 @@ router.get('/profile', async (req, res) => {
 
       const options = poll.postType === 'poll'
         ? poll.options.map(opt => {
-            const voteCount = opt.votes?.length || 0;
-            const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-            return {
-              id: opt.id,
-              optionText: opt.name,
-              voteCount,
-              votePercentage: +percentage.toFixed(2)
-            };
-          })
+          const voteCount = opt.votes?.length || 0;
+          const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+          return {
+            id: opt.id,
+            optionText: opt.name,
+            voteCount,
+            votePercentage: +percentage.toFixed(2)
+          };
+        })
         : [];
 
       return {
@@ -374,7 +374,7 @@ router.get('/search', async (req, res) => {
 
     let users = [];
     let posts = [];
-    let groups = []; 
+    let groups = [];
 
     if (!type || type === 'user') {
       users = await User.findAll({
@@ -388,7 +388,7 @@ router.get('/search', async (req, res) => {
         attributes: ['id', 'username', 'fullname', 'image']
       });
     }
-  
+
     if (!type || type === 'post') {
       const rawPosts = await Polls.findAll({
         where: {
@@ -461,7 +461,7 @@ router.get('/search', async (req, res) => {
           visibility: 'public',
           groupname: { [Op.like]: `%${query}%` }
         },
-        attributes: ['id', 'groupname'] 
+        attributes: ['id', 'groupname']
       });
     }
     res.status(200).json({ users, posts, groups });
@@ -526,7 +526,7 @@ router.post('/reports/user/:userId', async (req, res) => {
     }
 
     const existingReport = await Report.findOne({
-      where: { userId, reportUserId } 
+      where: { userId, reportUserId }
     });
 
     if (existingReport) {
@@ -535,7 +535,7 @@ router.post('/reports/user/:userId', async (req, res) => {
 
     await Report.create({
       userId,
-      reportUserId, 
+      reportUserId,
       message,
       status: 'pending'
     });
@@ -545,6 +545,129 @@ router.post('/reports/user/:userId', async (req, res) => {
   } catch (err) {
     console.error('Error reporting user:', err);
     return res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.post('/reports/comment/:commentId', async (req, res) => {
+  const userId = req.user.id;
+  const { commentId } = req.params;
+  const { message } = req.body;
+
+  if (!message || message.trim() === '') {
+    return res.status(400).json({ message: 'Report message is required' });
+  }
+
+  try {
+    const comment = await Comment.findByPk(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    const pollId = comment.pollId;
+
+    const existingReport = await Report.findOne({
+      where: { userId, commentId }
+    });
+
+    if (existingReport) {
+      return res.status(400).json({ message: 'You already reported this comment.' });
+    }
+
+    await Report.create({
+      userId,
+      commentId,
+      pollId,
+      message
+    });
+
+    res.status(201).json({ message: 'Comment reported successfully' });
+  } catch (error) {
+    console.error('Error reporting comment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.get('/invite', async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const invites = await Invite.findAll({
+      where: {
+        userId,
+        status: 'invited'
+      },
+      include: [
+        {
+          model: Group,
+          attributes: ['id', 'groupName', 'groupInfo', 'groupProfilePic'],
+        },
+        {
+          model: GroupMember,
+          attributes: ['id'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'username']
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({ invites });
+  } catch (err) {
+    console.error('Error fetching pending invites:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.post('/invite/:inviteId', async (req, res) => {
+  const { inviteId } = req.params;
+  const { action } = req.body;
+  const userId = req.user.id;
+
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject".' });
+  }
+
+  try {
+    const invite = await Invite.findOne({ where: { id: inviteId, userId } });
+
+    if (!invite) {
+      return res.status(404).json({ message: 'Invite not found or not authorized.' });
+    }
+
+    if (invite.status !== 'invited') {
+      return res.status(400).json({ message: `Invite already ${invite.status}.` });
+    }
+
+    if (action === 'approve') {
+      const isAlreadyMember = await GroupMember.findOne({
+        where: { groupId: invite.groupId, userId }
+      });
+
+      if (!isAlreadyMember) {
+        await GroupMember.create({
+          groupId: invite.groupId,
+          userId,
+          approved: true,
+        });
+      }
+
+      invite.status = 'accepted';
+    } else if (action === 'reject') {
+      invite.status = 'declined';
+    }
+
+    await invite.save();
+
+    return res.status(200).json({ message: `Invite ${action}d successfully.` });
+
+  } catch (err) {
+    console.error('Error handling invite:', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
 
